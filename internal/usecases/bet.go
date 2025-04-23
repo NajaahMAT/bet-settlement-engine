@@ -4,6 +4,7 @@ import (
 	"bet-settlement-engine/internal/domain/interface/repo"
 	"bet-settlement-engine/internal/domain/model"
 	"bet-settlement-engine/internal/http/request"
+	"bet-settlement-engine/internal/http/response"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -71,29 +72,57 @@ func (b *betUsecaseImpl) PlaceBet(req request.PlaceBetRequest) (res uuid.UUID, e
 	return betID, nil
 }
 
-func (b *betUsecaseImpl) SettleBet(req request.SettleBetRequest) {
+func (b *betUsecaseImpl) SettleBet(req request.SettleBetRequest) ([]response.SettleBetResponse, error) {
 	b.logger.Info("Settling bets", zap.String("event_id", req.EventID), zap.String("result", req.Result))
 
 	bets := b.betRepo.GetBetsByEvent(req.EventID)
 	b.logger.Debug("Fetched bets for event", zap.Int("count", len(bets)), zap.String("event_id", req.EventID))
 
+	var responses []response.SettleBetResponse
+	var failedUpdates int
+
 	for _, bet := range bets {
 		if bet.Result != "placed" {
 			b.logger.Debug("Skipping already settled bet", zap.String("bet_id", bet.ID), zap.String("current_result", bet.Result))
-
 			continue
 		}
+
 		bet.Result = req.Result
 		b.logger.Info("Updating bet result", zap.String("bet_id", bet.ID), zap.String("new_result", req.Result))
 
+		var amountWon float64
+
 		if bet.Result == "win" {
-			winnings := bet.Amount * bet.Odds
-			err := b.userRepo.UpdateBalance(bet.UserID, winnings)
+			amountWon = bet.Amount * bet.Odds
+			err := b.userRepo.UpdateBalance(bet.UserID, amountWon)
 			if err != nil {
-				b.logger.Error("Failed to update user balance after win", zap.String("user_id", bet.UserID), zap.Float64("winnings", winnings), zap.Error(err))
+				failedUpdates++
+				b.logger.Error("Failed to update user balance after win",
+					zap.String("user_id", bet.UserID),
+					zap.Float64("winnings", amountWon),
+					zap.Error(err),
+				)
+				continue
 			} else {
-				b.logger.Info("User winnings credited", zap.String("user_id", bet.UserID), zap.Float64("amount", winnings))
+				b.logger.Info("User winnings credited", zap.String("user_id", bet.UserID), zap.Float64("amount", amountWon))
 			}
 		}
+
+		responses = append(responses, response.SettleBetResponse{
+			Msg:       "Bet settled successfully",
+			BetID:     bet.ID,
+			UserID:    bet.UserID,
+			AmountWon: amountWon,
+		})
 	}
+
+	if len(responses) == 0 {
+		return nil, fmt.Errorf("no bets could be settled for event: %s", req.EventID)
+	}
+
+	if failedUpdates > 0 {
+		b.logger.Warn("Some bets failed to settle completely", zap.Int("failed", failedUpdates))
+	}
+
+	return responses, nil
 }

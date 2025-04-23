@@ -56,12 +56,20 @@ func (h *Handler) PlaceBetHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) SettleBetHandler(w http.ResponseWriter, r *http.Request) {
 	var req request.SettleBetRequest
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
 
-	logger.Log.Info("Settling bets", zap.String("event_id", req.EventID), zap.String("result", req.Result))
-	h.betUsecase.SettleBet(req)
+	responses, err := h.betUsecase.SettleBet(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-	w.WriteHeader(http.StatusNoContent)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(responses)
 }
 
 func (h *Handler) GetBalanceHandler(w http.ResponseWriter, r *http.Request) {
@@ -71,8 +79,9 @@ func (h *Handler) GetBalanceHandler(w http.ResponseWriter, r *http.Request) {
 
 	logger.Log.Info("Fetched balance", zap.String("user_id", userID), zap.Float64("balance", balance))
 
-	resp := map[string]float64{
-		"balance": balance,
+	resp := response.CheckBalanceResponse{
+		UserID:  userID,
+		Balance: balance,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
