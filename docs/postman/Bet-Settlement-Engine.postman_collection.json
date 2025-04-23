@@ -1,0 +1,104 @@
+{
+	"info": {
+		"_postman_id": "123ed377-af38-4ea5-ab32-dba4511c4f22",
+		"name": "Bet-Settlement-Engine",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "37005212"
+	},
+	"item": [
+		{
+			"name": "Place a Bet",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"user_id\": \"user123\",\r\n  \"event_id\": \"event001\",\r\n  \"odds\": 2.5,\r\n  \"amount\": 100\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/v1/bet/place",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"v1",
+						"bet",
+						"place"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Settle a Bet",
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"event_id\": \"event001\",\r\n  \"result\": \"win\"\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/v1/bet/settle",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"v1",
+						"bet",
+						"settle"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get User Balance",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/v1/user/balance/user123",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"v1",
+						"user",
+						"balance",
+						"user123"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
