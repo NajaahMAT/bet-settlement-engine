@@ -2,12 +2,17 @@ package main
 
 import (
 	router "bet-settlement-engine/internal/http"
-	"log"
+	"bet-settlement-engine/pkg/logger"
 	"net/http"
+
+	"go.uber.org/zap"
 )
 
 func main() {
+	logger.InitLogger()
+	defer logger.Log.Sync() // flush logs
+
 	r := router.SetupRoutes()
-	log.Println("Server started at :8080")
+	logger.Log.Info("Server started", zap.String("port", ":8080"))
 	http.ListenAndServe(":8080", r)
 }

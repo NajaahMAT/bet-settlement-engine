@@ -3,51 +3,97 @@ package usecases
 import (
 	"bet-settlement-engine/internal/domain/interface/repo"
 	"bet-settlement-engine/internal/domain/model"
+	"bet-settlement-engine/internal/http/request"
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 type betUsecaseImpl struct {
 	betRepo  repo.BetRepository
 	userRepo repo.UserRepository
+	logger   *zap.Logger
 }
 
-func NewBetUsecase(betRepo repo.BetRepository, userRepo repo.UserRepository) *betUsecaseImpl {
-	return &betUsecaseImpl{betRepo: betRepo, userRepo: userRepo}
+func NewBetUsecase(betRepo repo.BetRepository, userRepo repo.UserRepository, logger *zap.Logger) *betUsecaseImpl {
+	return &betUsecaseImpl{
+		betRepo:  betRepo,
+		userRepo: userRepo,
+		logger:   logger,
+	}
 }
 
-func (b *betUsecaseImpl) PlaceBet(userID, eventID string, odds, amount float64) error {
-	user, exists := b.userRepo.GetUser(userID)
+func (b *betUsecaseImpl) PlaceBet(req request.PlaceBetRequest) (res uuid.UUID, err error) {
+	b.logger.Info("Placing bet",
+		zap.String("user_id", req.UserID),
+		zap.Float64("amount", req.Amount),
+		zap.String("event_id", req.EventID),
+		zap.Float64("odds", req.Odds),
+	)
+	user, exists := b.userRepo.GetUser(req.UserID)
 	if !exists {
-		user = b.userRepo.CreateUser(userID)
+		b.logger.Warn("User not found, creating new user", zap.String("user_id", req.UserID))
+		user = b.userRepo.CreateUser(req.UserID)
+	} else {
+		b.logger.Debug("User found", zap.String("user_id", user.ID), zap.Float64("balance", user.Balance))
 	}
-	if user.Balance < amount {
-		return fmt.Errorf("insufficient balance")
+
+	if user.Balance < req.Amount {
+		b.logger.Warn("Insufficient balance", zap.String("user_id", req.UserID), zap.Float64("balance", user.Balance), zap.Float64("attempted_bet", req.Amount))
+		return res, fmt.Errorf("insufficient balance")
 	}
-	b.userRepo.UpdateBalance(userID, -amount)
+
+	err = b.userRepo.UpdateBalance(req.UserID, -req.Amount)
+	if err != nil {
+		b.logger.Error("Failed to deduct balance", zap.String("user_id", req.UserID), zap.Error(err))
+		return res, err
+	}
+	b.logger.Info("Balance deducted", zap.String("user_id", req.UserID), zap.Float64("amount", req.Amount))
+
+	betID := uuid.New()
 	bet := &model.Bet{
-		ID:      uuid.New().String(),
-		UserID:  userID,
-		EventID: eventID,
-		Odds:    odds,
-		Amount:  amount,
+		ID:      betID.String(),
+		UserID:  req.UserID,
+		EventID: req.EventID,
+		Odds:    req.Odds,
+		Amount:  req.Amount,
 		Result:  "placed",
 	}
-	b.betRepo.SaveBet(bet)
-	return nil
+	err = b.betRepo.SaveBet(bet)
+	if err != nil {
+		b.logger.Error("Failed to save bet", zap.Any("bet", bet), zap.Error(err))
+		return res, err
+	}
+
+	b.logger.Info("Bet successfully placed", zap.String("bet_id", bet.ID), zap.String("user_id", req.UserID))
+
+	return betID, nil
 }
 
-func (b *betUsecaseImpl) SettleBet(eventID, result string) {
-	bets := b.betRepo.GetBetsByEvent(eventID)
+func (b *betUsecaseImpl) SettleBet(req request.SettleBetRequest) {
+	b.logger.Info("Settling bets", zap.String("event_id", req.EventID), zap.String("result", req.Result))
+
+	bets := b.betRepo.GetBetsByEvent(req.EventID)
+	b.logger.Debug("Fetched bets for event", zap.Int("count", len(bets)), zap.String("event_id", req.EventID))
+
 	for _, bet := range bets {
 		if bet.Result != "placed" {
+			b.logger.Debug("Skipping already settled bet", zap.String("bet_id", bet.ID), zap.String("current_result", bet.Result))
+
 			continue
 		}
-		bet.Result = result
-		if result == "win" {
+		bet.Result = req.Result
+		b.logger.Info("Updating bet result", zap.String("bet_id", bet.ID), zap.String("new_result", req.Result))
+
+		if bet.Result == "win" {
 			winnings := bet.Amount * bet.Odds
-			b.userRepo.UpdateBalance(bet.UserID, winnings)
+			err := b.userRepo.UpdateBalance(bet.UserID, winnings)
+			if err != nil {
+				b.logger.Error("Failed to update user balance after win", zap.String("user_id", bet.UserID), zap.Float64("winnings", winnings), zap.Error(err))
+			} else {
+				b.logger.Info("User winnings credited", zap.String("user_id", bet.UserID), zap.Float64("amount", winnings))
+			}
 		}
 	}
 }

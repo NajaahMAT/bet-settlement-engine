@@ -1,6 +1,12 @@
 package usecase
 
+import (
+	"bet-settlement-engine/internal/http/request"
+
+	"github.com/google/uuid"
+)
+
 type BetUsecase interface {
-	PlaceBet(userID, eventID string, odds, amount float64) error
-	SettleBet(eventID, result string)
+	PlaceBet(req request.PlaceBetRequest) (uuid.UUID, error)
+	SettleBet(req request.SettleBetRequest)
 }

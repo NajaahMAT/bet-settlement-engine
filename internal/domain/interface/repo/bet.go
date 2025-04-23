@@ -1,6 +1,8 @@
-package usecase
+package repo
 
-type BetUsecase interface {
-	PlaceBet(userID, eventID string, odds, amount float64) error
-	SettleBet(eventID, result string)
+import "bet-settlement-engine/internal/domain/model"
+
+type BetRepository interface {
+	SaveBet(bet *model.Bet) error
+	GetBetsByEvent(eventID string) []*model.Bet
 }
